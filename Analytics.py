@@ -13,10 +13,16 @@ def main():
 	# Defines the scope of authorization to request from Google. Relies on permissions set to account on Google Analytics. 
 	scope = ['https://www.googleapis.com/auth/analytics.readonly']
 
+
+
 	# Both created via Google Developer Console. 
 	# Key file must be in the same directory as this script; Account email must be given permission at ACCOUNT level on Google Analytics account.
-	service_account_email = '165210372356-h0fdt6l8b7mntbf1o6pq8do8lfhko2rh@developer.gserviceaccount.com'
+	service_acccount_email_location = '/Users/Mig/desktop/google_service_account_email.txt'
 	key_file_location = '/Users/Mig/desktop/client_secrets.p12'
+
+	f = open(service_acccount_email_location, 'r')
+	service_account_email = f.read()
+	f.close()
 
 	# API details.
 	api_name = 'analytics'
