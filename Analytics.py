@@ -8,18 +8,19 @@ from oauth2client import client
 from oauth2client import file
 from oauth2client import tools
 
+import os
+from xlwings import Workbook, Range, Sheet
 
 def main():
 	# Defines the scope of authorization to request from Google. Relies on permissions set to account on Google Analytics. 
 	scope = ['https://www.googleapis.com/auth/analytics.readonly']
-
-
 
 	# Both created via Google Developer Console. 
 	# Key file must be in the same directory as this script; Account email must be given permission at ACCOUNT level on Google Analytics account.
 	service_acccount_email_location = '/Users/Mig/desktop/google_service_account_email.txt'
 	key_file_location = '/Users/Mig/desktop/client_secrets.p12'
 
+	# Read key from file.
 	f = open(service_acccount_email_location, 'r')
 	service_account_email = f.read()
 	f.close()
@@ -28,10 +29,15 @@ def main():
 	api_name = 'analytics'
 	api_version = 'v3'
 
+	# Obtain a service object.
 	service = get_service(api_name, api_version, scope, key_file_location, service_account_email)
+	# Obtain the organic search traffic data from the relevant profiles.
 	results = get_organic_results(service, get_profile_id(service))
-	# print_column_headers(results)
+	# Obtain the organic search traffic data from custom-set goals.
+	goal_results = get_goal_results(service, get_profile_id(service))	
 	
+	extract_traffic_data(results, goal_results)
+	#print_column_headers(results)
 
 
 def get_service(api_name, api_version, scope, key_file_location, service_account_email):
@@ -52,30 +58,34 @@ def get_service(api_name, api_version, scope, key_file_location, service_account
 
 
 def get_profile_id(service):
+	# Gets the right values for accountId, webPropertyId, profileId, checks if they exist and declares global variables for re-use.
 	# List all accounts that the service_account_email has access to.
 	accounts = service.management().accounts().list().execute()
 
 	if accounts.get('items'):
 		# Obtain the ID of the relevant account.
+		global account
 		account = accounts.get('items')[0].get('id')
 		
-		print accounts.get('items')[0].get('name')
+		#print accounts.get('items')[0].get('name')
 
 		properties = service.management().webproperties().list(accountId=account).execute()
 
 		if properties.get('items'):
 			# Obtain the ID of the relevant webProperty.
+			global property 
 			property = properties.get('items')[0].get('id')
 			
-			print properties.get('items')[0].get('name')
+			#print properties.get('items')[0].get('name')
 
 			profiles = service.management().profiles().list(accountId=account, webPropertyId=property).execute()
 
 			if profiles.get('items'):
 				# Obtain the ID of the relevant profile (view).
+				global profile
 				profile = profiles.get('items')[1].get('id')
 
-				print profiles.get('items')[1].get('name')
+				#print profiles.get('items')[1].get('name')
 				return profile
 				
 				# Print all the profiles (views) and their IDs.
@@ -86,38 +96,39 @@ def get_profile_id(service):
 
 	return None
 
+
 def get_organic_results(service, profile_id):
 	# Returns data from specified parameters. ids, start_date, end_date and metrics are REQUIRED. 
 	# https://developers.google.com/analytics/devguides/reporting/core/v3/reference for list of parameters.
 	
-	# Create a list with number of days in each month (to use as end_date parameter).
+	# Create a list with number of days in each month (to use as end_date parameter). Also checks in leap year.
 	year = 2015
 
 	if year % 4 == 0:
-		data = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+		daysinmonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	else:
-		data = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+		daysinmonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 	# Create a list with number of days in each month w/ for loops and appending.
 	'''
-	data = []
+	daysinmonth = []
 
 	for n in range(1, 13):
 		if n in [1, 3, 5, 7, 8, 10, 12]:
 			lastday = 31
-			data.append(lastday)
+			daysinmonth.append(lastday)
 		elif n == 2:
 			if year % 4 == 0:
 				lastday = 29
-				data.append(lastday)
+				daysinmonth.append(lastday)
 			else:
 				lastday = 28
-				data.append(lastday)
+				daysinmonth.append(lastday)
 		else:
 			lastday = 30
-			data.append(lastday)'''
+			daysinmonth.append(lastday)'''
 
-	# Loop through and request sessions from organic search for each month in the year.
+	# Loop through and request sessions from organic search for each month in the year. Then append to empty list.
 	intermed = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 	trafficdata = []
 
@@ -125,16 +136,20 @@ def get_organic_results(service, profile_id):
 		
 		ga_request = service.data().ga().get(ids='ga:' + profile_id,
 			start_date='2015-%s-01' % intermed[i],
-			end_date='2015-%s-%s' % (intermed[i], data[i]),
+			end_date='2015-%s-%s' % (intermed[i], daysinmonth[i]),
 			metrics='ga:sessions',
 			dimensions='ga:medium',
 			filters='ga:medium==organic',
-			fields='rows').execute()
+			fields='rows',
+			prettyPrint='true').execute()
 
-		trafficdata.append(ga_request)
+		if not ga_request:
+			trafficdata.append(0)
+		else:
+			trafficdata.append(int(ga_request['rows'][0][1]))
 
-	print trafficdata
-
+	#print trafficdata
+	return trafficdata
 
 	'''return service.data().ga().get(
 		ids='ga:' + profile_id,
@@ -145,12 +160,31 @@ def get_organic_results(service, profile_id):
 		filters='ga:medium==organic',
 		fields='rows').execute()'''
 
-'''def print_column_headers(results):
-	headers = results['columnHeaders']
-
-	for header in headers:
-		print header.get('name')'''
 	
+
+def get_goal_results(service, profile_id):
+	# List all goals you have access to with the relevant account gained from get_profile_id().
+	goals = service.management().goals().list(profileId=profile, accountId=account, webPropertyId=property).execute()
+
+	goaltrafficdata = {}
+
+	if goals.get('items'):
+		goaltrafficdata[goals.get('items')[0]['name']] = goals.get('items')[0]['value']
+	
+	#print goaltrafficdata
+	return goaltrafficdata
+
+
+'''def extract_traffic_data(results, goal_results):
+
+	#
+	
+	rawgoaldata = []
+	print results
+	print goal_results'''
+
+
+
 
 if __name__ == '__main__':
 	main()
