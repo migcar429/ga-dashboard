@@ -8,9 +8,6 @@ from oauth2client import client
 from oauth2client import file
 from oauth2client import tools
 
-import os
-from xlwings import Workbook, Range, Sheet
-
 def main():
 	# Defines the scope of authorization to request from Google. Relies on permissions set to account on Google Analytics. 
 	scope = ['https://www.googleapis.com/auth/analytics.readonly']
@@ -31,12 +28,15 @@ def main():
 
 	# Obtain a service object.
 	service = get_service(api_name, api_version, scope, key_file_location, service_account_email)
-	# Obtain the organic search traffic data from the relevant profiles.
-	results = get_organic_results(service, get_profile_id(service))
-	# Obtain the organic search traffic data from custom-set goals.
-	goal_results = get_goal_results(service, get_profile_id(service))	
 	
-	extract_traffic_data(results, goal_results)
+	# Obtain the organic search traffic data from the relevant profiles.
+	profile_id = get_profile_id(service)
+	results = get_organic_results(service, profile_id)
+
+	# Obtain the organic search traffic data from custom-set goals.
+	goal_id = get_goal_id(service, profile_id)
+	goalresults = get_goal_results(service, profile_id, goal_id)	
+	
 	#print_column_headers(results)
 
 
@@ -67,7 +67,7 @@ def get_profile_id(service):
 		global account
 		account = accounts.get('items')[0].get('id')
 		
-		#print accounts.get('items')[0].get('name')
+		print accounts.get('items')[0].get('name')
 
 		properties = service.management().webproperties().list(accountId=account).execute()
 
@@ -76,7 +76,7 @@ def get_profile_id(service):
 			global property 
 			property = properties.get('items')[0].get('id')
 			
-			#print properties.get('items')[0].get('name')
+			print properties.get('items')[0].get('name')
 
 			profiles = service.management().profiles().list(accountId=account, webPropertyId=property).execute()
 
@@ -85,7 +85,7 @@ def get_profile_id(service):
 				global profile
 				profile = profiles.get('items')[1].get('id')
 
-				#print profiles.get('items')[1].get('name')
+				print profiles.get('items')[1].get('name')
 				return profile
 				
 				# Print all the profiles (views) and their IDs.
@@ -98,12 +98,14 @@ def get_profile_id(service):
 
 
 def get_organic_results(service, profile_id):
-	# Returns data from specified parameters. ids, start_date, end_date and metrics are REQUIRED. 
+	# Returns organic search data for every month and appends to a list. ids, start_date, end_date and metrics are REQUIRED. 
 	# https://developers.google.com/analytics/devguides/reporting/core/v3/reference for list of parameters.
 	
 	# Create a list with number of days in each month (to use as end_date parameter). Also checks in leap year.
+	global year
 	year = 2015
 
+	global daysinmonth
 	if year % 4 == 0:
 		daysinmonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	else:
@@ -129,14 +131,14 @@ def get_organic_results(service, profile_id):
 			daysinmonth.append(lastday)'''
 
 	# Loop through and request sessions from organic search for each month in the year. Then append to empty list.
+	global intermed
 	intermed = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 	trafficdata = []
 
 	for i in range(0, 12):
-		
 		ga_request = service.data().ga().get(ids='ga:' + profile_id,
-			start_date='2015-%s-01' % intermed[i],
-			end_date='2015-%s-%s' % (intermed[i], daysinmonth[i]),
+			start_date='%s-%s-01' % (year, intermed[i]),
+			end_date='%s-%s-%s' % (year, intermed[i], daysinmonth[i]),
 			metrics='ga:sessions',
 			dimensions='ga:medium',
 			filters='ga:medium==organic',
@@ -146,43 +148,46 @@ def get_organic_results(service, profile_id):
 		if not ga_request:
 			trafficdata.append(0)
 		else:
+			# First list index required ([0]) because of strange formatting. Second list index is from a list with format ['organic', value].
 			trafficdata.append(int(ga_request['rows'][0][1]))
 
-	#print trafficdata
+	print trafficdata
 	return trafficdata
-
-	'''return service.data().ga().get(
-		ids='ga:' + profile_id,
-		start_date=start_date,
-		end_date=end_date,
-		metrics='ga:sessions',
-		dimensions='ga:medium',
-		filters='ga:medium==organic',
-		fields='rows').execute()'''
-
 	
-
-def get_goal_results(service, profile_id):
+def get_goal_id(service, profile_id):
 	# List all goals you have access to with the relevant account gained from get_profile_id().
 	goals = service.management().goals().list(profileId=profile, accountId=account, webPropertyId=property).execute()
 
-	goaltrafficdata = {}
-
 	if goals.get('items'):
-		goaltrafficdata[goals.get('items')[0]['name']] = goals.get('items')[0]['value']
+		goal = goals.get('items')[0]['id']
+		return goal
+
+
+def get_goal_results(service, profile_id, goal_id):
+
+	goaltrafficdata = []
 	
-	#print goaltrafficdata
+	if goal_id in range(0, 9):
+		zero = '0'
+	elif goal_id > 9:
+		zero = ''
+
+	for i in range(0, 12):
+		ga_request = service.data().ga().get(
+			ids='ga:' + profile_id,
+			start_date='%s-%s-01' % (year, intermed[i]),
+			end_date='%s-%s-%s' % (year, intermed[i], daysinmonth[i]),
+			metrics='ga:goal' + zero + goal_id + 'Completions',
+			filters='ga:medium==organic',
+			).execute()
+
+		if not ga_request:
+			goaltrafficdata.append(0)
+		else:
+			goaltrafficdata.append(ga_request['totalResults'])
+
+	print goaltrafficdata
 	return goaltrafficdata
-
-
-'''def extract_traffic_data(results, goal_results):
-
-	#
-	
-	rawgoaldata = []
-	print results
-	print goal_results'''
-
 
 
 
