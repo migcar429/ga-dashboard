@@ -8,6 +8,9 @@ from oauth2client import client
 from oauth2client import file
 from oauth2client import tools
 
+from xlwings import Workbook, Range, Sheet
+import os.path
+
 def main():
 	# Defines the scope of authorization to request from Google. Relies on permissions set to account on Google Analytics. 
 	scope = ['https://www.googleapis.com/auth/analytics.readonly']
@@ -35,10 +38,10 @@ def main():
 
 	# Obtain the organic search traffic data from custom-set goals.
 	goal_id = get_goal_id(service, profile_id)
-	goalresults = get_goal_results(service, profile_id, goal_id)	
+	goal_results = get_goal_results(service, profile_id, goal_id)	
 	
-	#print_column_headers(results)
-
+	# Write all results to Excel file.
+	write_to_excel(results, goal_results)
 
 def get_service(api_name, api_version, scope, key_file_location, service_account_email):
 
@@ -164,7 +167,7 @@ def get_goal_id(service, profile_id):
 
 
 def get_goal_results(service, profile_id, goal_id):
-
+	# Gets goal traffic data.
 	goaltrafficdata = []
 	
 	if goal_id in range(0, 9):
@@ -189,6 +192,22 @@ def get_goal_results(service, profile_id, goal_id):
 	print goaltrafficdata
 	return goaltrafficdata
 
+
+def write_to_excel(results, goal_results):
+	# Writes data to excel.
+
+	# Specifies path of Excel file and sets the current workbook to it.
+	path = os.path.dirname(os.path.abspath(__file__))
+	filename = 'test.xlsx'
+	wb = Workbook(path + '/' + filename)
+
+	# Transpose the list of results to be able to fit xlwings format of inputting values column-wise.
+	results = map(list, zip(results))
+	goal_results = map(list, zip(goal_results))
+
+	# Sets values to cells.
+	Range('Sheet1', 'A1').value = results
+	Range('Sheet1', 'B1').value = goal_results
 
 
 if __name__ == '__main__':
